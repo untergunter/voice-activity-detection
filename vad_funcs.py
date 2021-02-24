@@ -31,9 +31,14 @@ def df_to_X_y(path):
     return X, y
 
 
-class parquet_loader():
-    def __init__(self, files):
+class ParquetLoader():
+    def __init__(self, files: list, meta_data: pd.DataFrame = None):
         self.file_names = files
+        if meta_data is None:
+            self.meta_data = None
+        else:
+            self.meta_data = meta_data
+
 
     def shuffle_inputs(self):
         shuffle(self.file_names)
@@ -58,23 +63,6 @@ class NaiveNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-
-
-class parquet_loader():
-    def __init__(self, files):
-        self.file_names = files
-
-    def shuffle_inputs(self):
-        shuffle(self.file_names)
-
-    def __iter__(self):
-        self.shuffle_inputs()
-        for file in self.file_names:
-            x, y = df_to_X_y(file)
-            yield x, y, file
-
-    def __len__(self):
-        return len(self.file_names)
 
 
 def get_original_name(file_name):
@@ -132,14 +120,19 @@ def find_all_data_files() -> pd.DataFrame:
         file_name = get_original_name(raw_file)
         file_numbers.append(file_name)
     files_df = pd.DataFrame({"path": raw_file_names
-                                , "noise": noise_list
-                                , "snr": snr_list
-                                , "rows": number_of_rows
-                                , "rows_of_speech": number_of_talk
-                                , "file_number": file_name
+                            , "noise": noise_list
+                            , "snr": snr_list
+                            , "rows": number_of_rows
+                            , "rows_of_speech": number_of_talk
+                            , "file_number": file_name
                              })
     return files_df
 
+def make_path_list_and_metadata(paths:set,full_df):
+    meta_data = full_df[full_df['file_number'].isin(paths)]
+    meta_data = meta_data.set_index('path').T.to_dict('list')
+    paths = list(paths)
+    return paths,meta_data
 
 def train_test_validate_split(train_ratio: float = 0.95, test_ratio: float = 0.04) -> tuple:
     """ this function returns 3 data loaders """
@@ -153,13 +146,9 @@ def train_test_validate_split(train_ratio: float = 0.95, test_ratio: float = 0.0
     train_names = set(distinct_files[:first_train])
     test_names = set(distinct_files[first_train:first_validation])
     validation_names = set(distinct_files[first_validation:])
-
-    train_files = distinct_files[distinct_files['file_number'].isin(train_names)]['path'].tolist()
-    test_files = distinct_files[distinct_files['file_number'].isin(test_names)]['path'].tolist()
-    validation_files = distinct_files[distinct_files['file_number'].isin(validation_names)]['path'].tolist()
-    all_loaders = [parquet_loader(list_of_paths) for list_of_paths in (train_files,test_files,validation_files)]
+    all_loaders = [ParquetLoader(make_path_list_and_metadata(set_of_paths,all_data_files))
+                  for set_of_paths in (train_names, test_names, validation_names)]
     return all_loaders
-
 
 
 class NaiveNet(nn.Module):
