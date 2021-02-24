@@ -70,7 +70,7 @@ def get_original_name(file_name):
 
 
 def get_all_files():
-    files = [file_name for file_name in Path(os.getcwd()).rglob("*.gzip")][:100]
+    files = [file_name for file_name in Path(os.getcwd()).rglob("*.gzip")]
     return files
 
 
@@ -104,7 +104,7 @@ def get_noise_type_and_snr(file):
 
 def find_all_data_files() -> pd.DataFrame:
     raw_file_names = get_all_files()
-    snr_list, noise_list, number_of_rows, number_of_talk, file_numbers = [], [], [], [], []
+    snr_list, noise_list, number_of_rows, number_of_talk, file_namess = [], [], [], [], []
     for raw_file in raw_file_names:
         noise, snr = get_noise_type_and_snr(raw_file)
         noise_list.append(noise)
@@ -118,19 +118,19 @@ def find_all_data_files() -> pd.DataFrame:
         number_of_talk.append(number_of_talk_rows)
 
         file_name = get_original_name(raw_file)
-        file_numbers.append(file_name)
+        file_namess.append(file_name)
     files_df = pd.DataFrame({"path": raw_file_names
                             , "noise": noise_list
                             , "snr": snr_list
                             , "rows": number_of_rows
                             , "rows_of_speech": number_of_talk
-                            , "file_number": file_name
+                            , "file_number": file_namess
                              })
     return files_df
 
 def make_path_list_and_metadata(paths:set,full_df):
     meta_data = full_df[full_df['file_number'].isin(paths)]
-    meta_data = meta_data.set_index('path').T.to_dict('list')
+    meta_data = meta_data.set_index('path').to_dict('index')
     paths = list(paths)
     return paths,meta_data
 
@@ -142,11 +142,13 @@ def train_test_validate_split(train_ratio: float = 0.95, test_ratio: float = 0.0
     distinct_files = list(all_data_files['file_number'].unique())
     shuffle(distinct_files)
     first_train = int(train_ratio * len(distinct_files))
-    first_validation = int(test_ratio + train_ratio * len(distinct_files))
+    first_validation = int((test_ratio + train_ratio) * len(distinct_files))
     train_names = set(distinct_files[:first_train])
     test_names = set(distinct_files[first_train:first_validation])
     validation_names = set(distinct_files[first_validation:])
-    all_loaders = [ParquetLoader(make_path_list_and_metadata(set_of_paths,all_data_files))
+
+
+    all_loaders = [ParquetLoader(*make_path_list_and_metadata(set_of_paths,all_data_files))
                   for set_of_paths in (train_names, test_names, validation_names)]
     return all_loaders
 
