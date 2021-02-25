@@ -7,6 +7,8 @@ import glob
 from pathlib import Path
 import os
 from typing import Collection
+import pickle
+import numpy as np
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f'using {device}')
@@ -31,9 +33,11 @@ def df_to_X_y(path):
     return X, y
 
 
-class ParquetLoader():
+class ParquetLoader:
+
     def __init__(self, files: list, meta_data: pd.DataFrame = None):
         self.file_names = files
+        self.index = 0
         if meta_data is None:
             self.meta_data = None
         else:
@@ -51,6 +55,13 @@ class ParquetLoader():
     def __len__(self):
         return len(self.file_names)
 
+    def __next__(self):
+        try:
+            result = self.file_names[self.index] if self.index < len(self) else None
+        except IndexError:
+            result = None
+        self.index += 1
+        return result
 
 class NaiveNet(nn.Module):
 
@@ -164,3 +175,70 @@ class NaiveNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+def load_pickle(path):
+    with open(path, "rb") as input_file:
+        result = pickle.load(input_file)
+    return result
+
+def train_until_test_is_not_uproving(device
+                                     ,model
+                                     ,criterion
+                                     ,optimizer
+                                     ,stop_after_not_improving_for:int = 50):
+
+    train_loader = load_pickle(r'data_loaders/train.pickle')
+    test_loader = load_pickle(r'data_loaders/test.pickle')
+
+
+    model_didnt_improve_for = 0
+    losses = []
+    accuracy_history = []
+    best_accuracy = 0
+    while stop_after_not_improving_for > model_didnt_improve_for:
+
+        next_one = train_loader.__next__()
+        if next_one is None:  # we finished all the data
+            train_loader.shuffle_inputs()
+            next_one = train_loader.__next__()
+        X, y = next_one
+        X = X.to(device)
+        y = y.to(device)
+
+        # foreword
+        output = model(X)
+        loss = criterion(output, y)
+        losses.append(loss)
+
+        # backwards
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # check our early stop condition
+        with torch.no_grad():
+            next_one = test_loader.__next__()
+            if next_one is None: #we finished all the data
+                test_loader.shuffle_inputs()
+                next_one = test_loader.__next__()
+            X, y  = next_one
+            X = X.to(device)
+            y = y.to(device)
+
+            # forword
+            outputs = model(X)
+            _, predictions = torch.max(outputs, 1)
+            total = predictions.shape[0]
+            correct = (predictions == y).sum().item()
+            accuracy = 100 * correct / total
+            if best_accuracy >= accuracy:
+                model_didnt_improve_for+=1
+            elif best_accuracy < accuracy:
+                model_didnt_improve_for = 0
+                best_accuracy = accuracy
+            accuracy_history.append(accuracy)
+            if len(accuracy_history)%100==0:
+                print(f'last loss is {loss}, accuracy is {accuracy}, didnt improve for {model_didnt_improve_for}')
+
+    loss_accuracy_df = pd.DataFrame({'loss':losses,'accuracy':accuracy_history})
+    return loss_accuracy_df,model
