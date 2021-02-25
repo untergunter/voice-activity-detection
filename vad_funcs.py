@@ -10,9 +10,6 @@ from typing import Collection
 import pickle
 import numpy as np
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f'using {device}')
-
 
 def train_and_test_files_paths(path: str = os.getcwd(), test_ratio: float = 0.004) -> list:
     files = [file_name for file_name in Path(os.getcwd()).rglob("*.gzip")]
@@ -35,14 +32,13 @@ def df_to_X_y(path):
 
 class ParquetLoader:
 
-    def __init__(self, files: list, meta_data: pd.DataFrame = None):
+    def __init__(self, files: list, meta_data: dict = None):
         self.file_names = files
         self.index = 0
         if meta_data is None:
             self.meta_data = None
         else:
             self.meta_data = meta_data
-
 
     def shuffle_inputs(self):
         shuffle(self.file_names)
@@ -62,6 +58,7 @@ class ParquetLoader:
             result = None
         self.index += 1
         return result
+
 
 class NaiveNet(nn.Module):
 
@@ -131,19 +128,21 @@ def find_all_data_files() -> pd.DataFrame:
         file_name = get_original_name(raw_file)
         file_namess.append(file_name)
     files_df = pd.DataFrame({"path": raw_file_names
-                            , "noise": noise_list
-                            , "snr": snr_list
-                            , "rows": number_of_rows
-                            , "rows_of_speech": number_of_talk
-                            , "file_number": file_namess
+                                , "noise": noise_list
+                                , "snr": snr_list
+                                , "rows": number_of_rows
+                                , "rows_of_speech": number_of_talk
+                                , "file_number": file_namess
                              })
     return files_df
 
-def make_path_list_and_metadata(paths:set,full_df):
+
+def make_path_list_and_metadata(paths: set, full_df):
     meta_data = full_df[full_df['file_number'].isin(paths)]
     meta_data = meta_data.set_index('path').to_dict('index')
     paths = list(paths)
-    return paths,meta_data
+    return paths, meta_data
+
 
 def train_test_validate_split(train_ratio: float = 0.95, test_ratio: float = 0.04) -> tuple:
     """ this function returns 3 data loaders """
@@ -158,9 +157,8 @@ def train_test_validate_split(train_ratio: float = 0.95, test_ratio: float = 0.0
     test_names = set(distinct_files[first_train:first_validation])
     validation_names = set(distinct_files[first_validation:])
 
-
-    all_loaders = [ParquetLoader(*make_path_list_and_metadata(set_of_paths,all_data_files))
-                  for set_of_paths in (train_names, test_names, validation_names)]
+    all_loaders = [ParquetLoader(*make_path_list_and_metadata(set_of_paths, all_data_files))
+                   for set_of_paths in (train_names, test_names, validation_names)]
     return all_loaders
 
 
@@ -176,20 +174,20 @@ class NaiveNet(nn.Module):
         x = self.fc2(x)
         return x
 
+
 def load_pickle(path):
     with open(path, "rb") as input_file:
         result = pickle.load(input_file)
     return result
 
-def train_until_test_is_not_uproving(device
-                                     ,model
-                                     ,criterion
-                                     ,optimizer
-                                     ,stop_after_not_improving_for:int = 50):
 
+def train_until_test_is_not_improving(device
+                                      , model
+                                      , criterion
+                                      , optimizer
+                                      , stop_after_not_improving_for: int = 50):
     train_loader = load_pickle(r'data_loaders/train.pickle')
     test_loader = load_pickle(r'data_loaders/test.pickle')
-
 
     model_didnt_improve_for = 0
     losses = []
@@ -215,30 +213,70 @@ def train_until_test_is_not_uproving(device
         loss.backward()
         optimizer.step()
 
-        # check our early stop condition
+        # check our early stop condition - is accuracy getting better?
         with torch.no_grad():
             next_one = test_loader.__next__()
-            if next_one is None: #we finished all the data
+            if next_one is None:  # we finished all the data
                 test_loader.shuffle_inputs()
                 next_one = test_loader.__next__()
-            X, y  = next_one
+            X, y = next_one
             X = X.to(device)
             y = y.to(device)
 
-            # forword
+            # foreword
             outputs = model(X)
             _, predictions = torch.max(outputs, 1)
+
+            # calculate accuracy
             total = predictions.shape[0]
             correct = (predictions == y).sum().item()
             accuracy = 100 * correct / total
-            if best_accuracy >= accuracy:
-                model_didnt_improve_for+=1
-            elif best_accuracy < accuracy:
-                model_didnt_improve_for = 0
-                best_accuracy = accuracy
             accuracy_history.append(accuracy)
-            if len(accuracy_history)%100==0:
-                print(f'last loss is {loss}, accuracy is {accuracy}, didnt improve for {model_didnt_improve_for}')
 
-    loss_accuracy_df = pd.DataFrame({'loss':losses,'accuracy':accuracy_history})
-    return loss_accuracy_df,model
+            # is accuracy getting better?
+            last_30_mean = np.mean(accuracy_history[-30:])
+            if best_accuracy >= last_30_mean:
+                model_didnt_improve_for += 1
+            elif best_accuracy < last_30_mean:
+                model_didnt_improve_for = 0
+                best_accuracy = last_30_mean
+
+            if len(accuracy_history) % 100 == 0:
+                print(f'last loss is {loss}'
+                      f'accuracy is {accuracy}'
+                      f'mean accuracy is {last_30_mean}'
+                      f'didnt improve for {model_didnt_improve_for}')
+
+    loss_accuracy_df = pd.DataFrame({'loss': losses, 'accuracy': accuracy_history})
+    return loss_accuracy_df, model
+
+
+def evaluate_model(model, device, model_name):
+    validation_set = load_pickle(r'data_loaders/validate.pickle')
+    model_results = validation_set.meta_data.copy()
+    while True:
+        with torch.no_grad():
+            next_one = validation_set.__next__()
+            if next_one is None:  # we finished all the data
+                break
+            X, y = next_one
+            X = X.to(device)
+            y = y.to(device)
+
+            # foreword
+            outputs = model(X)
+            _, predictions = torch.max(outputs, 1)
+
+            # calculate accuracy
+            total = predictions.shape[0]
+            correct = (predictions == y).sum().item()
+            accuracy = 100 * correct / total
+
+            # save_results
+            peth_key = validation_set.file_names[validation_set.index - 1]
+            model_results[peth_key]['accuracy'] = accuracy
+
+        # write results to dataframe
+        model_results = pd.DataFrame(model_results).T()
+        model_results.reset_index(drop=True, inplace=True)
+        model_results.to_parquet(f'{model_name}.parquet', index=False)
