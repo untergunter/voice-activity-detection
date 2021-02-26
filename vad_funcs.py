@@ -277,4 +277,5 @@ def evaluate_model(model, device, model_name):
     # write results to dataframe
     model_results = pd.DataFrame(model_results).T
     model_results.reset_index(drop=True, inplace=True)
+    model_results.sort_values(by='accuracy',ascending=False,inplace=True)
     model_results.to_csv(r'models_results/'+f'{model_name}.csv', index=False)
