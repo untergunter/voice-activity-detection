@@ -27,13 +27,13 @@ class LogisticRegression(torch.nn.Module):
         x = F.log_softmax(x, dim=1)
         return x
 
-model = LogisticRegression()
+model = LogisticRegression(input_size,number_of_classes).to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-training_df,trained_model = train_until_test_is_not_improving(
-                            device,model,criterion,optimizer):
+training_df,trained_model = \
+    train_until_test_is_not_improving(device,model,criterion,optimizer,150)
 
-training_df.to_parquet(f'{model_name}_training.parquet',index=False)
+training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
 
 evaluate_model(model, device, model_name)

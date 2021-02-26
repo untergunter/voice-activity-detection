@@ -3,10 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from random import shuffle
 import pandas as pd
-import glob
 from pathlib import Path
 import os
-from typing import Collection
 import pickle
 import numpy as np
 
@@ -20,7 +18,7 @@ def train_and_test_files_paths(path: str = os.getcwd(), test_ratio: float = 0.00
     return train, test
 
 
-def df_to_X_y(path):
+def df_path_to_X_y(path):
     df = pd.read_parquet(path)
     y_column = df.columns[-1]
     X_columns = [col for col in df.columns if not col == y_column]
@@ -46,7 +44,7 @@ class ParquetLoader:
     def __iter__(self):
         self.shuffle_inputs()
         for file in self.file_names:
-            yield df_to_X_y(file)
+            yield df_path_to_X_y(file)
 
     def __len__(self):
         return len(self.file_names)
@@ -137,10 +135,10 @@ def find_all_data_files() -> pd.DataFrame:
     return files_df
 
 
-def make_path_list_and_metadata(paths: set, full_df):
-    meta_data = full_df[full_df['file_number'].isin(paths)]
+def make_path_list_and_metadata(file_numbers: set, full_df):
+    meta_data = full_df[full_df['file_number'].isin(file_numbers)]
+    paths = meta_data['path'].to_list()
     meta_data = meta_data.set_index('path').to_dict('index')
-    paths = list(paths)
     return paths, meta_data
 
 
@@ -185,7 +183,7 @@ def train_until_test_is_not_improving(device
                                       , model
                                       , criterion
                                       , optimizer
-                                      , stop_after_not_improving_for: int = 50):
+                                      , stop_after_not_improving_for: int = 200):
     train_loader = load_pickle(r'data_loaders/train.pickle')
     test_loader = load_pickle(r'data_loaders/test.pickle')
 
@@ -193,13 +191,14 @@ def train_until_test_is_not_improving(device
     losses = []
     accuracy_history = []
     best_accuracy = 0
+
     while stop_after_not_improving_for > model_didnt_improve_for:
 
         next_one = train_loader.__next__()
         if next_one is None:  # we finished all the data
             train_loader.shuffle_inputs()
             next_one = train_loader.__next__()
-        X, y = next_one
+        X, y = df_path_to_X_y(next_one)
         X = X.to(device)
         y = y.to(device)
 
@@ -219,7 +218,7 @@ def train_until_test_is_not_improving(device
             if next_one is None:  # we finished all the data
                 test_loader.shuffle_inputs()
                 next_one = test_loader.__next__()
-            X, y = next_one
+            X, y = df_path_to_X_y(next_one)
             X = X.to(device)
             y = y.to(device)
 
@@ -242,12 +241,12 @@ def train_until_test_is_not_improving(device
                 best_accuracy = last_30_mean
 
             if len(accuracy_history) % 100 == 0:
-                print(f'last loss is {loss}'
-                      f'accuracy is {accuracy}'
-                      f'mean accuracy is {last_30_mean}'
-                      f'didnt improve for {model_didnt_improve_for}')
-
-    loss_accuracy_df = pd.DataFrame({'loss': losses, 'accuracy': accuracy_history})
+                print(f'last loss is {loss},'
+                      f'accuracy is {accuracy},'
+                      f'mean accuracy is {last_30_mean},'
+                      f'didnt improve for {model_didnt_improve_for},')
+    loss_accuracy_df = pd.DataFrame({'loss': torch.tensor(losses).to('cpu')
+                                        , 'accuracy':torch.tensor(accuracy_history).to('cpu')})
     return loss_accuracy_df, model
 
 
@@ -259,7 +258,7 @@ def evaluate_model(model, device, model_name):
             next_one = validation_set.__next__()
             if next_one is None:  # we finished all the data
                 break
-            X, y = next_one
+            X, y = df_path_to_X_y(next_one)
             X = X.to(device)
             y = y.to(device)
 
@@ -273,10 +272,9 @@ def evaluate_model(model, device, model_name):
             accuracy = 100 * correct / total
 
             # save_results
-            peth_key = validation_set.file_names[validation_set.index - 1]
-            model_results[peth_key]['accuracy'] = accuracy
+            model_results[next_one]['accuracy'] = accuracy
 
-        # write results to dataframe
-        model_results = pd.DataFrame(model_results).T()
-        model_results.reset_index(drop=True, inplace=True)
-        model_results.to_parquet(f'{model_name}.parquet', index=False)
+    # write results to dataframe
+    model_results = pd.DataFrame(model_results).T
+    model_results.reset_index(drop=True, inplace=True)
+    model_results.to_csv(r'models_results/'+f'{model_name}.csv', index=False)
