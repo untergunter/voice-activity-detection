@@ -65,9 +65,31 @@ training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
 evaluate_model(model, device, model_name)
 
 ###########
-# #rnn
-# model_name = 'rnn'
-#
+#rnn
+model_name = 'rnn'
+
+
+class Rnn(torch.nn.Module):
+    def __init__(self, input_size, embedding_size, hidden_size, output_size):
+        super(Rnn, self).__init__()
+        self.embedding = torch.nn.Embedding(input_size, embedding_size)
+        self.rnn = torch.nn.LSTM(embedding_size, hidden_size)
+        self.out = torch.nn.Linear(hidden_size, output_size)
+        self.v = torch.nn.Parameter(torch.FloatTensor(hidden_size).uniform_(-0.2, 0.2)).cuda()
+        self.fc = torch.nn.Linear(hidden_size, hidden_size)
+
+    def forward(self, single_sentence):
+        embedded = self.embedding(single_sentence)
+        embedded = embedded.view(len(single_sentence), 1, -1)
+        out, hidden = self.rnn(embedded)
+
+        x = self.fc(torch.squeeze(out))
+        x = torch.tanh(x)
+        probobilty = torch.matmul(x, self.v)
+        weights = F.softmax(probobilty, dim=0)
+        context = torch.matmul(weights.T, torch.squeeze(out))
+        return self.out(context)
+
 # #rnn
 # model_name = 'bi_rnn'
 #
