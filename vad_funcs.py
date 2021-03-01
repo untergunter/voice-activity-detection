@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import pickle
 import numpy as np
+from collections import defaultdict
 
 
 def train_and_test_files_paths(path: str = os.getcwd(), test_ratio: float = 0.004) -> list:
@@ -246,7 +247,7 @@ def train_until_test_is_not_improving(device
                       f'mean accuracy is {last_30_mean},'
                       f'didnt improve for {model_didnt_improve_for},')
     loss_accuracy_df = pd.DataFrame({'loss': torch.tensor(losses).to('cpu')
-                                        , 'accuracy':torch.tensor(accuracy_history).to('cpu')})
+                                        , 'accuracy': torch.tensor(accuracy_history).to('cpu')})
     return loss_accuracy_df, model
 
 
@@ -277,5 +278,189 @@ def evaluate_model(model, device, model_name):
     # write results to dataframe
     model_results = pd.DataFrame(model_results).T
     model_results.reset_index(drop=True, inplace=True)
-    model_results.sort_values(by='accuracy',ascending=False,inplace=True)
-    model_results.to_csv(r'models_results/'+f'{model_name}.csv', index=False)
+    model_results.sort_values(by='accuracy', ascending=False, inplace=True)
+    model_results.to_csv(r'models_results/' + f'{model_name}.csv', index=False)
+
+
+class BatchParquetLoader:
+
+    def __init__(self, base_files: list, augmentations_paths_per_base_file: dict = None):
+        self.base_files = list(base_files)
+        self.augmentation_paths_per_base_file = augmentations_paths_per_base_file
+        self.index = 0
+
+    def shuffle_inputs(self):
+        shuffle(self.base_files)
+
+
+    def get_all_augmentations(self,file):
+        all_file_augmentations = [df_path_to_X_y(specific_augmentation)
+                                  for specific_augmentation in self.augmentation_paths_per_base_file[file]]
+        return all_file_augmentations
+
+    def get_all_paths_names(self,file):
+        all_paths = [specific_augmentation for specific_augmentation in self.augmentation_paths_per_base_file[file]]
+        return all_paths
+
+    def __iter__(self):
+        for file in self.base_files:
+            all_file_augmentations = self.get_all_augmentations(file)
+            yield all_file_augmentations
+
+    def __len__(self):
+        return len(self.base_files)
+
+    def __next__(self):
+        try:
+            next_file = self.base_files[self.index] if self.index < len(self) else None
+        except IndexError:
+            next_file = None
+        self.index += 1
+        return next_file
+
+
+def build_set_of_base_files_and_paths_dict():
+    all_paths = get_all_files()
+
+    paths_for_base_file = defaultdict(list)
+    distinct_base_files = set()
+
+    for specific_path in all_paths:
+        base_file = get_original_name(specific_path)
+        paths_for_base_file[base_file].append(specific_path)
+        distinct_base_files.add(base_file)
+    return distinct_base_files, paths_for_base_file
+
+
+def train_test_validate_split_bp(train_ratio: float = 0.95, test_ratio: float = 0.04) -> tuple:
+    """ this function returns 3 data loaders """
+    assert train_ratio + test_ratio < 1, 'we must have a validation set,' \
+                                         ' so train_ratio+test_ratio must be <1'
+
+    base_files, paths_per_base_file = build_set_of_base_files_and_paths_dict()
+
+    base_files = list(base_files)
+    shuffle(base_files)
+
+    #find indexes
+    first_train = int(train_ratio * len(base_files))
+    first_validation = int((test_ratio + train_ratio) * len(base_files))
+
+    #split by indexes
+    train_names = set(base_files[:first_train])
+    test_names = set(base_files[first_train:first_validation])
+    validation_names = set(base_files[first_validation:])
+
+    #prepare loaders
+    all_loaders = [BatchParquetLoader(base_files_subset
+                                      , {base_file: paths_per_base_file[base_file]
+                                         for base_file in base_files_subset})
+                   for base_files_subset in (train_names, test_names, validation_names)]
+    return all_loaders
+
+def batch_train_until_test_is_not_improving(device
+                                      , model
+                                      , criterion
+                                      , optimizer
+                                      , stop_after_not_improving_for: int = 5):
+    train_loader = load_pickle(r'data_loaders/trainb.pickle')
+    test_loader = load_pickle(r'data_loaders/testb.pickle')
+
+    model_didnt_improve_for = 0
+    losses = []
+    accuracy_history = []
+    best_accuracy = 0
+
+    while stop_after_not_improving_for > model_didnt_improve_for:
+        for next_batch in train_loader:
+            batch_loss = []
+            all_augmentations = train_loader.get_all_augmentations(next_batch)
+            for X,y in all_augmentations:
+                X = X.to(device)
+                y = y.to(device)
+
+                # foreword
+                output = model(X)
+                loss = criterion(output, y)
+
+
+            # backwards
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                batch_loss.append(loss)
+
+            # save batch loss
+            losses.append(torch.mean(batch_loss)).item()
+            # check our early stop condition - is accuracy getting better?
+            with torch.no_grad():
+                next_batch = test_loader.__next__()
+                if next_batch is None:  # we finished all the data
+                    train_loader.shuffle_inputs()
+                    next_batch = train_loader.__next__()
+
+                batch_accuracy = []
+
+                for X, y in next_batch:
+
+                    X = X.to(device)
+                    y = y.to(device)
+
+
+                    # foreword
+                    outputs = model(X)
+                    _, predictions = torch.max(outputs, 1)
+
+                # calculate accuracy
+                    total = predictions.shape[0]
+                    correct = (predictions == y).sum().item()
+                    accuracy = 100 * correct / total
+                    batch_accuracy.append(accuracy)
+
+                last_batch_accuracy = torch.mean(batch_accuracy).item()
+                accuracy_history.append(last_batch_accuracy)
+                # is accuracy getting better
+
+                if best_accuracy >= last_batch_accuracy:
+                    model_didnt_improve_for += 1
+                elif best_accuracy < last_batch_accuracy:
+                    model_didnt_improve_for = 0
+                    best_accuracy = last_batch_accuracy
+
+                print(f'last batch loss is {losses[-1]},'
+                      f'accuracy is {last_batch_accuracy},'
+                      f'didnt improve for {model_didnt_improve_for},')
+
+    loss_accuracy_df = pd.DataFrame({'loss': torch.tensor(losses).to('cpu')
+                                        , 'accuracy': torch.tensor(accuracy_history).to('cpu')})
+    return loss_accuracy_df, model
+
+def batch_evaluate_model(model, device, model_name):
+    validation_set = load_pickle(r'data_loaders/validateb.pickle')
+    results = []
+    while True:
+        with torch.no_grad():
+            for base_name in validation_set.base_files:
+                augmentations = validation_set.get_all_augmentations(base_name)
+                for X,y in augmentations:
+                    X = X.to(device)
+                    y = y.to(device)
+
+                    # foreword
+                    outputs = model(X)
+                    _, predictions = torch.max(outputs, 1)
+
+                    # calculate accuracy
+                    total = predictions.shape[0]
+                    correct = (predictions == y).sum().item()
+                    accuracy = 100 * correct / total
+
+                    # save_results
+                    noise,snr = get_noise_type_and_snr(path)
+                    results.append((base_name,noise,snr,accuracy))
+
+    # write results to dataframe
+    model_results = pd.DataFrame(model_results,columns=['base_name','noise','snr','accuracy'])
+    model_results.sort_values(by='accuracy', ascending=False, inplace=True)
+    model_results.to_csv(r'models_results/' + f'{model_name}.csv', index=False)
