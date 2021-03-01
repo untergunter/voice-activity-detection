@@ -292,7 +292,6 @@ class BatchParquetLoader:
     def shuffle_inputs(self):
         shuffle(self.base_files)
 
-
     def get_all_augmentations(self,file):
         all_file_augmentations = [df_path_to_X_y(specific_augmentation)
                                   for specific_augmentation in self.augmentation_paths_per_base_file[file]]
@@ -313,8 +312,12 @@ class BatchParquetLoader:
     def __next__(self):
         try:
             next_file = self.base_files[self.index] if self.index < len(self) else None
+
         except IndexError:
-            next_file = None
+            self.index = 0
+            self.shuffle_inputs()
+            next_file = self.base_files[self.index] if self.index < len(self) else None
+
         self.index += 1
         return next_file
 
@@ -374,31 +377,34 @@ def batch_train_until_test_is_not_improving(device
     while stop_after_not_improving_for > model_didnt_improve_for:
         for next_batch in train_loader:
             batch_loss = []
-            all_augmentations = train_loader.get_all_augmentations(next_batch)
-            for X,y in all_augmentations:
+            for X,y in next_batch:
                 X = X.to(device)
                 y = y.to(device)
 
                 # foreword
+
+                optimizer.zero_grad()
                 output = model(X)
                 loss = criterion(output, y)
 
 
             # backwards
-                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
                 batch_loss.append(loss)
 
             # save batch loss
-            losses.append(torch.mean(batch_loss)).item()
+            losses.append(torch.mean(torch.tensor(batch_loss)).item())
             # check our early stop condition - is accuracy getting better?
             with torch.no_grad():
-                next_batch = test_loader.__next__()
-                if next_batch is None:  # we finished all the data
-                    train_loader.shuffle_inputs()
-                    next_batch = train_loader.__next__()
+                next_file = test_loader.__next__()
+                if next_file is None:  # we finished all the data
+                    test_loader.shuffle_inputs()
+                    test_loader.index=0
+                    next_file = test_loader.__next__()
+
+                next_batch = test_loader.get_all_augmentations(next_file)
 
                 batch_accuracy = []
 
@@ -418,7 +424,7 @@ def batch_train_until_test_is_not_improving(device
                     accuracy = 100 * correct / total
                     batch_accuracy.append(accuracy)
 
-                last_batch_accuracy = torch.mean(batch_accuracy).item()
+                last_batch_accuracy = torch.mean(torch.tensor(batch_accuracy)).item()
                 accuracy_history.append(last_batch_accuracy)
                 # is accuracy getting better
 
@@ -432,6 +438,8 @@ def batch_train_until_test_is_not_improving(device
                       f'accuracy is {last_batch_accuracy},'
                       f'didnt improve for {model_didnt_improve_for},')
 
+            if stop_after_not_improving_for <= model_didnt_improve_for:
+                break
     loss_accuracy_df = pd.DataFrame({'loss': torch.tensor(losses).to('cpu')
                                         , 'accuracy': torch.tensor(accuracy_history).to('cpu')})
     return loss_accuracy_df, model
@@ -439,28 +447,30 @@ def batch_train_until_test_is_not_improving(device
 def batch_evaluate_model(model, device, model_name):
     validation_set = load_pickle(r'data_loaders/validateb.pickle')
     results = []
-    while True:
-        with torch.no_grad():
-            for base_name in validation_set.base_files:
-                augmentations = validation_set.get_all_augmentations(base_name)
-                for X,y in augmentations:
-                    X = X.to(device)
-                    y = y.to(device)
 
-                    # foreword
-                    outputs = model(X)
-                    _, predictions = torch.max(outputs, 1)
+    with torch.no_grad():
+        for index in range(len(validation_set)):
+            base_name = validation_set.base_files[index]
+            augmentations = validation_set.get_all_paths_names(base_name)
+            for path in augmentations:
+                X,y = df_path_to_X_y(path)
+                X = X.to(device)
+                y = y.to(device)
 
-                    # calculate accuracy
-                    total = predictions.shape[0]
-                    correct = (predictions == y).sum().item()
-                    accuracy = 100 * correct / total
+                # foreword
+                outputs = model(X)
+                _, predictions = torch.max(outputs, 1)
 
-                    # save_results
-                    noise,snr = get_noise_type_and_snr(path)
-                    results.append((base_name,noise,snr,accuracy))
+                # calculate accuracy
+                total = predictions.shape[0]
+                correct = (predictions == y).sum().item()
+                accuracy = 100 * correct / total
+
+                # save_results
+                noise,snr = get_noise_type_and_snr(path)
+                results.append((base_name,noise,snr,accuracy))
 
     # write results to dataframe
-    model_results = pd.DataFrame(model_results,columns=['base_name','noise','snr','accuracy'])
+    model_results = pd.DataFrame(results,columns=['base_name','noise','snr','accuracy'])
     model_results.sort_values(by='accuracy', ascending=False, inplace=True)
     model_results.to_csv(r'models_results/' + f'{model_name}.csv', index=False)

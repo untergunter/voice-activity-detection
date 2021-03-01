@@ -54,6 +54,7 @@ def naive_net_train(device):
             x = F.relu(self.fc1(x))
             x = self.fc2(x)
             return x
+
     input_size = 26
     number_of_classes = 2
     learning_rate = 0.001
@@ -95,11 +96,41 @@ def batch_logistic_regression_train(device):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     training_df,trained_model = \
-        batch_train_until_test_is_not_improving(device,model,criterion,optimizer,50)
+        batch_train_until_test_is_not_improving(device,model,criterion,optimizer,stop_after_not_improving_for=20)
 
     training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
 
     batch_evaluate_model(model, device, model_name)
 
+
+def batch_naive_net_train(device):
+    model_name = 'naive_net'
+
+    class NaiveNet(nn.Module):
+
+        def __init__(self, input_size, hidden_size, number_of_classes):
+            super(NaiveNet, self).__init__()
+            self.fc1 = nn.Linear(input_size, hidden_size)
+            self.fc2 = nn.Linear(hidden_size, number_of_classes)
+
+        def forward(self, x):
+            x = F.relu(self.fc1(x))
+            x = self.fc2(x)
+            return x
+
+    input_size = 26
+    number_of_classes = 2
+    learning_rate = 0.001
+    hidden_size = input_size * 2
+    model = NaiveNet(input_size,hidden_size,number_of_classes).to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    training_df,trained_model = \
+        batch_train_until_test_is_not_improving(device,model,criterion,optimizer,stop_after_not_improving_for=25)
+
+    training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
+
+    batch_evaluate_model(model, device, model_name)
 if __name__=='__main__':
-    batch_logistic_regression_train(device)
+    batch_naive_net_train(device)

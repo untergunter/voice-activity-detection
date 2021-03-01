@@ -1,5 +1,5 @@
 import pathlib
-from vad_funcs import train_test_validate_split,train_test_validate_split_bp
+from vad_funcs import train_test_validate_split, train_test_validate_split_bp
 import pickle
 
 # folder = pathlib.Path("data_loaders/")
@@ -47,5 +47,8 @@ with open('/home/ido/data/idc/deep learning/vad/data_loaders/testb.pickle', 'rb'
 with open('/home/ido/data/idc/deep learning/vad/data_loaders/validateb.pickle', 'rb') as f:
     vl = pickle.load(f)
 
-for dataloader in (tr,ts,vl):
+for dataloader in (tr, ts, vl):
     print(len(dataloader))
+    for raw_file in dataloader.base_files:
+        if not raw_file in dataloader.augmentation_paths_per_base_file:
+            print(raw_file)
