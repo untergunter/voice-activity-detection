@@ -495,28 +495,25 @@ def batch_train_rnn_until_test_is_not_improving(device
         for next_batch in train_loader:
             batch_loss = []
             for X,y in next_batch:
-                file_loss =[]
+
                 X_rows= X.to(device)
-                y_rows = y.to(device)
+                predictions = torch.zeros(size=(X.shape[0],2))
                 hidden_layer = model.init_hidden().to(device)
+
                 for row in range(X_rows.shape[0]):
                     X = X_rows[row,:]
-                    y = y_rows[row]
                 # foreword
 
-                    optimizer.zero_grad()
+
                     output,hidden_layer = model(X,hidden_layer)
+                    predictions[row:] = output
 
-                    loss = criterion(output, y)
+                optimizer.zero_grad()
+                loss = criterion(predictions, y)
+                loss.backward()
+                optimizer.step()
 
-
-            # backwards
-                    loss.backward()
-                    optimizer.step()
-
-                    file_loss.append(loss)
-
-                batch_loss.append(torch.mean(torch.tensor(file_loss)).item())
+                batch_loss.append(loss)
 
             # save batch loss
             losses.append(torch.mean(torch.tensor(batch_loss)).item())
@@ -533,21 +530,20 @@ def batch_train_rnn_until_test_is_not_improving(device
                 batch_accuracy = []
 
                 for X, y in next_batch:
-                    file_loss = []
-                    otputs = []
-                    X_rows = X.to(device)
-                    y_rows = y.to(device)
-                    hidden_layer = model.init_hidden()
-                    for row in range(X_rows.shape[0]):
-                        X = X_rows[0, :]
-                        y = y_rows[0, :]
 
-                    # foreword
-                        output , hidden_layer = model(X , hidden_layer)
-                        otputs.append(output)
+                    predictions = torch.zeros(size=(X.shape[0], 2))
+                    hidden_layer = model.init_hidden().to(device)
+                    X_rows = X.to(device)
+                    for row in range(X_rows.shape[0]):
+                        X = X_rows[row, :]
+                        # foreword
+
+                        output, hidden_layer = model(X, hidden_layer)
+                        predictions[row:] = output
+
 
                 # calculate accuracy
-                    predictions = torch.tensor(otputs)
+                    _, predictions = torch.max(predictions, 1)
                     total = predictions.shape[0]
                     correct = (predictions == y).sum().item()
                     accuracy = 100 * correct / total
