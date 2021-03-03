@@ -474,3 +474,101 @@ def batch_evaluate_model(model, device, model_name):
     model_results = pd.DataFrame(results,columns=['base_name','noise','snr','accuracy'])
     model_results.sort_values(by='accuracy', ascending=False, inplace=True)
     model_results.to_csv(r'models_results/' + f'{model_name}.csv', index=False)
+
+
+### for rnn
+
+def batch_train_rnn_until_test_is_not_improving(device
+                                      , model
+                                      , criterion
+                                      , optimizer
+                                      , stop_after_not_improving_for: int = 5):
+    train_loader = load_pickle(r'data_loaders/trainb.pickle')
+    test_loader = load_pickle(r'data_loaders/testb.pickle')
+
+    model_didnt_improve_for = 0
+    losses = []
+    accuracy_history = []
+    best_accuracy = 0
+
+    while stop_after_not_improving_for > model_didnt_improve_for:
+        for next_batch in train_loader:
+            batch_loss = []
+            for X,y in next_batch:
+                file_loss =[]
+                X_rows= X.to(device)
+                y_rows = y.to(device)
+                hidden_layer = model.init_hidden().to(device)
+                for row in range(X_rows.shape[0]):
+                    X = X_rows[row,:]
+                    y = y_rows[row]
+                # foreword
+
+                    optimizer.zero_grad()
+                    output,hidden_layer = model(X,hidden_layer)
+
+                    loss = criterion(output, y)
+
+
+            # backwards
+                    loss.backward()
+                    optimizer.step()
+
+                    file_loss.append(loss)
+
+                batch_loss.append(torch.mean(torch.tensor(file_loss)).item())
+
+            # save batch loss
+            losses.append(torch.mean(torch.tensor(batch_loss)).item())
+            # check our early stop condition - is accuracy getting better?
+            with torch.no_grad():
+                next_file = test_loader.__next__()
+                if next_file is None:  # we finished all the data
+                    test_loader.shuffle_inputs()
+                    test_loader.index=0
+                    next_file = test_loader.__next__()
+
+                next_batch = test_loader.get_all_augmentations(next_file)
+
+                batch_accuracy = []
+
+                for X, y in next_batch:
+                    file_loss = []
+                    otputs = []
+                    X_rows = X.to(device)
+                    y_rows = y.to(device)
+                    hidden_layer = model.init_hidden()
+                    for row in range(X_rows.shape[0]):
+                        X = X_rows[0, :]
+                        y = y_rows[0, :]
+
+                    # foreword
+                        output , hidden_layer = model(X , hidden_layer)
+                        otputs.append(output)
+
+                # calculate accuracy
+                    predictions = torch.tensor(otputs)
+                    total = predictions.shape[0]
+                    correct = (predictions == y).sum().item()
+                    accuracy = 100 * correct / total
+                    batch_accuracy.append(accuracy)
+
+                last_batch_accuracy = torch.mean(torch.tensor(batch_accuracy)).item()
+                accuracy_history.append(last_batch_accuracy)
+                # is accuracy getting better
+
+                if best_accuracy >= last_batch_accuracy:
+                    model_didnt_improve_for += 1
+                elif best_accuracy < last_batch_accuracy:
+                    model_didnt_improve_for = 0
+                    best_accuracy = last_batch_accuracy
+
+                print(f'last batch loss is {losses[-1]},'
+                      f'accuracy is {last_batch_accuracy},'
+                      f'didnt improve for {model_didnt_improve_for},')
+
+            if stop_after_not_improving_for <= model_didnt_improve_for:
+                break
+    loss_accuracy_df = pd.DataFrame({'loss': torch.tensor(losses).to('cpu')
+                                        , 'accuracy': torch.tensor(accuracy_history).to('cpu')})
+    return loss_accuracy_df, model
