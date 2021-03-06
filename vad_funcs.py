@@ -568,3 +568,40 @@ def batch_train_rnn_until_test_is_not_improving(device
     loss_accuracy_df = pd.DataFrame({'loss': torch.tensor(losses).to('cpu')
                                         , 'accuracy': torch.tensor(accuracy_history).to('cpu')})
     return loss_accuracy_df, model
+
+def batch_evaluate_rnn_model(model, device, model_name):
+    validation_set = load_pickle(r'data_loaders/validateb.pickle')
+    results = []
+
+    with torch.no_grad():
+        for index in range(len(validation_set)):
+            base_name = validation_set.base_files[index]
+            augmentations = validation_set.get_all_paths_names(base_name)
+            for path in augmentations:
+                X, y = df_path_to_X_y(path)
+                predictions = torch.zeros(size=(X.shape[0], 2))
+                hidden_layer = model.init_hidden().to(device)
+                X_rows = X.to(device)
+                for row in range(X_rows.shape[0]):
+                    X = X_rows[row, :]
+                    # foreword
+
+                    output, hidden_layer = model(X, hidden_layer)
+                    predictions[row:] = output
+
+
+                # calculate accuracy
+                _, predictions = torch.max(predictions, 1)
+                total = predictions.shape[0]
+                correct = (predictions == y).sum().item()
+                accuracy = 100 * correct / total
+
+
+                # save_results
+                noise,snr = get_noise_type_and_snr(path)
+                results.append((base_name,noise,snr,accuracy))
+
+    # write results to dataframe
+    model_results = pd.DataFrame(results,columns=['base_name','noise','snr','accuracy'])
+    model_results.sort_values(by='accuracy', ascending=False, inplace=True)
+    model_results.to_csv(r'models_results/' + f'{model_name}.csv', index=False)

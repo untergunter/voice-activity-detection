@@ -5,9 +5,10 @@ from random import shuffle
 import pandas as pd
 from pathlib import Path
 import os
-from vad_funcs import train_until_test_is_not_improving,evaluate_model\
+from vad_funcs import \
+    train_until_test_is_not_improving,evaluate_model\
     ,batch_train_until_test_is_not_improving,batch_evaluate_model\
-    ,batch_train_rnn_until_test_is_not_improving
+    ,batch_train_rnn_until_test_is_not_improving,batch_evaluate_rnn_model
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(device)
@@ -215,7 +216,7 @@ def rnn_train(device):
 
     training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
 
-    batch_evaluate_model(model, device, model_name)
+    batch_evaluate_rnn_model(model, device, model_name)
 
 if __name__=='__main__':
     rnn_train(device)
