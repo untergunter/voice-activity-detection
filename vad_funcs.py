@@ -365,7 +365,8 @@ def batch_train_until_test_is_not_improving(device
                                       , model
                                       , criterion
                                       , optimizer
-                                      , stop_after_not_improving_for: int = 5):
+                                      , stop_after_not_improving_for: int = 5
+                                      , no_delta = False):
     train_loader = load_pickle(r'data_loaders/trainb.pickle')
     test_loader = load_pickle(r'data_loaders/testb.pickle')
 
@@ -378,6 +379,8 @@ def batch_train_until_test_is_not_improving(device
         for next_batch in train_loader:
             batch_loss = []
             for X,y in next_batch:
+                if no_delta is True:
+                    X = X[:,:13]
                 X = X.to(device)
                 y = y.to(device)
 
@@ -409,7 +412,8 @@ def batch_train_until_test_is_not_improving(device
                 batch_accuracy = []
 
                 for X, y in next_batch:
-
+                    if no_delta is True:
+                        X = X[:, :13]
                     X = X.to(device)
                     y = y.to(device)
 
@@ -444,7 +448,7 @@ def batch_train_until_test_is_not_improving(device
                                         , 'accuracy': torch.tensor(accuracy_history).to('cpu')})
     return loss_accuracy_df, model
 
-def batch_evaluate_model(model, device, model_name):
+def batch_evaluate_model(model, device, model_name, no_delta = False):
     validation_set = load_pickle(r'data_loaders/validateb.pickle')
     results = []
 
@@ -454,6 +458,8 @@ def batch_evaluate_model(model, device, model_name):
             augmentations = validation_set.get_all_paths_names(base_name)
             for path in augmentations:
                 X,y = df_path_to_X_y(path)
+                if no_delta is True:
+                    X = X[:, :13]
                 X = X.to(device)
                 y = y.to(device)
 
@@ -482,7 +488,8 @@ def batch_train_rnn_until_test_is_not_improving(device
                                       , model
                                       , criterion
                                       , optimizer
-                                      , stop_after_not_improving_for: int = 5):
+                                      , stop_after_not_improving_for: int = 5
+                                      , no_delta = False):
     train_loader = load_pickle(r'data_loaders/trainb.pickle')
     test_loader = load_pickle(r'data_loaders/testb.pickle')
 
@@ -495,7 +502,8 @@ def batch_train_rnn_until_test_is_not_improving(device
         for next_batch in train_loader:
             batch_loss = []
             for X,y in next_batch:
-
+                if no_delta is True:
+                    X = X[:, :13]
                 X_rows= X.to(device)
                 predictions = torch.zeros(size=(X.shape[0],2))
                 hidden_layer = model.init_hidden().to(device)
@@ -530,7 +538,8 @@ def batch_train_rnn_until_test_is_not_improving(device
                 batch_accuracy = []
 
                 for X, y in next_batch:
-
+                    if no_delta is True:
+                        X = X[:, :13]
                     predictions = torch.zeros(size=(X.shape[0], 2))
                     hidden_layer = model.init_hidden().to(device)
                     X_rows = X.to(device)
@@ -569,7 +578,7 @@ def batch_train_rnn_until_test_is_not_improving(device
                                         , 'accuracy': torch.tensor(accuracy_history).to('cpu')})
     return loss_accuracy_df, model
 
-def batch_evaluate_rnn_model(model, device, model_name):
+def batch_evaluate_rnn_model(model, device, model_name,no_delta = False):
     validation_set = load_pickle(r'data_loaders/validateb.pickle')
     results = []
 
@@ -579,6 +588,8 @@ def batch_evaluate_rnn_model(model, device, model_name):
             augmentations = validation_set.get_all_paths_names(base_name)
             for path in augmentations:
                 X, y = df_path_to_X_y(path)
+                if no_delta is True:
+                    X = X[:, :13]
                 predictions = torch.zeros(size=(X.shape[0], 2))
                 hidden_layer = model.init_hidden().to(device)
                 X_rows = X.to(device)
