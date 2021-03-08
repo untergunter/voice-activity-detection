@@ -8,9 +8,6 @@ from vad_funcs import \
     ,batch_train_until_test_is_not_improving,batch_evaluate_model\
     ,batch_train_rnn_until_test_is_not_improving,batch_evaluate_rnn_model
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(device)
-
 """ first lets test a basic logistic regression """
 
 def logistic_regression_train(device):
@@ -303,6 +300,8 @@ def batch_rnn_no_delta_train(device):
     batch_evaluate_rnn_model(model, device, model_name,no_delta = True)
 
 if __name__=='__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(device)
     model_name = ['logistic_regression','naive_net','batch_logistic_regression'
                  ,'batch_naive_net' ,'batch_deep_neural_net','batch_rnn'
                  ,'batch_deep_neural_net_no_delta','batch_rnn_no_delta']

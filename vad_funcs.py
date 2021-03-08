@@ -10,7 +10,7 @@ import numpy as np
 from collections import defaultdict
 
 
-def train_and_test_files_paths(path: str = os.getcwd(), test_ratio: float = 0.004) -> list:
+def train_and_test_files_paths(path: str = os.getcwd(), test_ratio: float = 0.2) -> list:
     files = [file_name for file_name in Path(os.getcwd()).rglob("*.gzip")]
     shuffle(files)
     first_train = int(test_ratio * len(files))
