@@ -335,7 +335,7 @@ def build_set_of_base_files_and_paths_dict():
     return distinct_base_files, paths_for_base_file
 
 
-def train_test_validate_split_bp(train_ratio: float = 0.95, test_ratio: float = 0.04) -> tuple:
+def train_test_validate_split_bp(train_ratio: float = 0.7, test_ratio: float = 0.1) -> tuple:
     """ this function returns 3 data loaders """
     assert train_ratio + test_ratio < 1, 'we must have a validation set,' \
                                          ' so train_ratio+test_ratio must be <1'
@@ -380,7 +380,7 @@ def batch_train_until_test_is_not_improving(device
             batch_loss = []
             for X,y in next_batch:
                 if no_delta is True:
-                    X = X[:,:13]
+                    X = X[:,:10]
                 X = X.to(device)
                 y = y.to(device)
 
@@ -413,7 +413,7 @@ def batch_train_until_test_is_not_improving(device
 
                 for X, y in next_batch:
                     if no_delta is True:
-                        X = X[:, :13]
+                        X = X[:, :10]
                     X = X.to(device)
                     y = y.to(device)
 
@@ -459,7 +459,7 @@ def batch_evaluate_model(model, device, model_name, no_delta = False):
             for path in augmentations:
                 X,y = df_path_to_X_y(path)
                 if no_delta is True:
-                    X = X[:, :13]
+                    X = X[:, :10]
                 X = X.to(device)
                 y = y.to(device)
 
@@ -503,7 +503,7 @@ def batch_train_rnn_until_test_is_not_improving(device
             batch_loss = []
             for X,y in next_batch:
                 if no_delta is True:
-                    X = X[:, :13]
+                    X = X[:, :10]
                 X_rows= X.to(device)
                 predictions = torch.zeros(size=(X.shape[0],2))
                 hidden_layer = model.init_hidden().to(device)
@@ -539,7 +539,7 @@ def batch_train_rnn_until_test_is_not_improving(device
 
                 for X, y in next_batch:
                     if no_delta is True:
-                        X = X[:, :13]
+                        X = X[:, :10]
                     predictions = torch.zeros(size=(X.shape[0], 2))
                     hidden_layer = model.init_hidden().to(device)
                     X_rows = X.to(device)
@@ -589,7 +589,7 @@ def batch_evaluate_rnn_model(model, device, model_name,no_delta = False):
             for path in augmentations:
                 X, y = df_path_to_X_y(path)
                 if no_delta is True:
-                    X = X[:, :13]
+                    X = X[:, :10]
                 predictions = torch.zeros(size=(X.shape[0], 2))
                 hidden_layer = model.init_hidden().to(device)
                 X_rows = X.to(device)

@@ -1,10 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from random import shuffle
+from datetime import datetime
 import pandas as pd
-from pathlib import Path
-import os
 from vad_funcs import \
     train_until_test_is_not_improving,evaluate_model\
     ,batch_train_until_test_is_not_improving,batch_evaluate_model\
@@ -74,7 +72,7 @@ def naive_net_train(device):
 
 ###########
 
-# changed data loading to load all noise permutatinos of each
+# changed data loading to load all noise permutations of each
 # file together so train is now every iteration is 31 taged files
 
 def batch_logistic_regression_train(device):
@@ -82,7 +80,7 @@ def batch_logistic_regression_train(device):
     number_of_classes = 2
     learning_rate = 0.001
 
-    model_name = 'logistic_regression'
+    model_name = 'batch_logistic_regression'
     class LogisticRegression(torch.nn.Module):
         def __init__(self, input_size, number_of_classes):
             super(LogisticRegression, self).__init__()
@@ -106,7 +104,7 @@ def batch_logistic_regression_train(device):
 
 
 def batch_naive_net_train(device):
-    model_name = 'naive_net'
+    model_name = 'batch_naive_net'
 
     class NaiveNet(nn.Module):
 
@@ -135,13 +133,13 @@ def batch_naive_net_train(device):
 
     batch_evaluate_model(model, device, model_name)
 
-def deeper_naive_net_train(device):
-    model_name = 'deeper_naive_net'
+def batch_deep_neural_net_train(device):
+    model_name = 'deep_neural_net'
 
-    class DeepNaiveNet(nn.Module):
+    class DeepNeuralNet(nn.Module):
 
         def __init__(self, input_size, hidden_size, number_of_classes):
-            super(DeepNaiveNet, self).__init__()
+            super(DeepNeuralNet, self).__init__()
             self.fc1 = nn.Linear(input_size, hidden_size*4)
             self.fc2 = nn.Linear(hidden_size*4, hidden_size*3)
             self.fc3 = nn.Linear(hidden_size*3, hidden_size*2)
@@ -160,7 +158,7 @@ def deeper_naive_net_train(device):
     number_of_classes = 2
     learning_rate = 0.001
     hidden_size = input_size * 2
-    model = DeepNaiveNet(input_size,hidden_size,number_of_classes).to(device)
+    model = DeepNeuralNet(input_size,hidden_size,number_of_classes).to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -172,8 +170,8 @@ def deeper_naive_net_train(device):
     batch_evaluate_model(model, device, model_name)
 
 
-def rnn_train(device):
-    model_name = 'basic_rnn'
+def batch_rnn_train(device):
+    model_name = 'batch_rnn'
 
     class RNN(nn.Module):
 
@@ -219,54 +217,8 @@ def rnn_train(device):
     batch_evaluate_rnn_model(model, device, model_name)
 
 
-def lstm_train(device): #not working some dimensions problem
-    model_name = 'basic_lstm'
-
-    class LSTM(nn.Module):
-
-        def __init__(self, input_size, hidden_size, number_of_classes):
-            super(LSTM, self).__init__()
-            self.hidden_size = hidden_size
-
-            # make new hidden layer
-            self.lstm = nn.LSTM(input_size , hidden_size)
-            self.fc1 = nn.Linear(hidden_size , hidden_size)
-
-            # make output
-            self.fc2 = nn.Linear(input_size + hidden_size, input_size + hidden_size)
-            self.fc3 = nn.Linear(input_size + hidden_size, number_of_classes)
-
-        def forward(self, x,hidden_vec):
-
-            full_input = torch.cat((x,hidden_vec))
-            new_hidden_vec = F.leaky_relu(self.lstm(x,hidden_vec))
-            new_hidden_vec = self.fc1(new_hidden_vec)
-
-            output = F.leaky_relu(self.fc2(full_input))
-            output = self.fc3(output)
-            return output, new_hidden_vec
-
-        def init_hidden(self):
-            return torch.rand(self.hidden_size)
-
-
-    input_size = 26
-    number_of_classes = 2
-    learning_rate = 0.001
-    hidden_size = input_size * 2
-    model = LSTM(input_size,hidden_size,number_of_classes).to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-    training_df,trained_model = \
-        batch_train_rnn_until_test_is_not_improving(device,model,criterion,optimizer,stop_after_not_improving_for=25)
-
-    training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
-
-    batch_evaluate_rnn_model(model, device, model_name)
-
-def deep_naive_net_no_delta_train(device):
-    model_name = 'deep_net_no_delta'
+def batch_deep_neural_net_no_delta_train(device):
+    model_name = 'atch_deep_neural_net_no_delta'
 
     class DeepNaiveNet(nn.Module):
 
@@ -286,7 +238,7 @@ def deep_naive_net_no_delta_train(device):
             x = self.fc5(x)
             return x
 
-    input_size = 13
+    input_size = 10
     number_of_classes = 2
     learning_rate = 0.001
     hidden_size = input_size * 2
@@ -303,8 +255,8 @@ def deep_naive_net_no_delta_train(device):
     batch_evaluate_model(model, device, model_name,no_delta = True)
 
 
-def rnn_no_delta_train(device):
-    model_name = 'basic_rnn_no_delta'
+def batch_rnn_no_delta_train(device):
+    model_name = 'batch_rnn_no_delta'
 
     class RNN(nn.Module):
 
@@ -334,7 +286,7 @@ def rnn_no_delta_train(device):
             return torch.rand(self.hidden_size)
 
 
-    input_size = 13
+    input_size = 10
     number_of_classes = 2
     learning_rate = 0.001
     hidden_size = input_size * 2
@@ -351,4 +303,18 @@ def rnn_no_delta_train(device):
     batch_evaluate_rnn_model(model, device, model_name,no_delta = True)
 
 if __name__=='__main__':
-    rnn_no_delta_train(device)
+    model_name = ['logistic_regression','naive_net','batch_logistic_regression'
+                 ,'batch_naive_net' ,'batch_deep_neural_net','batch_rnn'
+                 ,'batch_deep_neural_net_no_delta','batch_rnn_no_delta']
+    time_to_train = []
+    for training_function in(logistic_regression_train,naive_net_train,batch_logistic_regression_train
+                            ,batch_naive_net_train,batch_deep_neural_net_train,batch_rnn_train
+                            ,batch_deep_neural_net_no_delta_train,batch_rnn_no_delta_train):
+        t0 = datetime.now()
+        training_function(device)
+        t1 = datetime.now()
+        time_to_train.append((t1-t0).seconds)
+
+    training_time = pd.DataFrame({'model': model_name, 'time': time_to_train})
+    training_time.sort_values(by='time', ascending=False, inplace=True)
+    training_time.to_csv('training_time.csv', index=False)
