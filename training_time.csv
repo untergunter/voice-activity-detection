@@ -1,0 +1,9 @@
+model,time
+batch_rnn_no_delta,3470
+batch_rnn,3236
+batch_naive_net,202
+batch_deep_neural_net_no_delta,199
+batch_deep_neural_net,178
+batch_logistic_regression,175
+logistic_regression,15
+naive_net,15
