@@ -128,3 +128,4 @@ dmypy.json
 # Pyre type checker
 .pyre/
 /Parquet_DB/
+/plots/accuracy_voice_ratio_correlations/.ipynb_checkpoints/

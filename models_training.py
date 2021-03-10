@@ -31,7 +31,7 @@ def logistic_regression_train(device):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     training_df,trained_model = \
-        train_until_test_is_not_improving(device,model,criterion,optimizer,150)
+        train_until_test_is_not_improving(device,model,criterion,optimizer,25*31)
 
     training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
 
@@ -61,7 +61,7 @@ def naive_net_train(device):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     training_df,trained_model = \
-        train_until_test_is_not_improving(device,model,criterion,optimizer,150)
+        train_until_test_is_not_improving(device,model,criterion,optimizer,25*31)
 
     training_df.to_csv(r'models_results/'+f'{model_name}_training.csv',index=False)
 
@@ -302,13 +302,9 @@ def batch_rnn_no_delta_train(device):
 if __name__=='__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
-    model_name = ['logistic_regression','naive_net','batch_logistic_regression'
-                 ,'batch_naive_net' ,'batch_deep_neural_net','batch_rnn'
-                 ,'batch_deep_neural_net_no_delta','batch_rnn_no_delta']
+    model_name = ['logistic_regression','naive_net']
     time_to_train = []
-    for training_function in(logistic_regression_train,naive_net_train,batch_logistic_regression_train
-                            ,batch_naive_net_train,batch_deep_neural_net_train,batch_rnn_train
-                            ,batch_deep_neural_net_no_delta_train,batch_rnn_no_delta_train):
+    for training_function in(logistic_regression_train,naive_net_train):
         t0 = datetime.now()
         training_function(device)
         t1 = datetime.now()
@@ -316,4 +312,4 @@ if __name__=='__main__':
 
     training_time = pd.DataFrame({'model': model_name, 'time': time_to_train})
     training_time.sort_values(by='time', ascending=False, inplace=True)
-    training_time.to_csv('training_time.csv', index=False)
+    training_time.to_csv('training_time_1.csv', index=False)

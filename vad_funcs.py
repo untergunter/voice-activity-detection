@@ -616,3 +616,18 @@ def batch_evaluate_rnn_model(model, device, model_name,no_delta = False):
     model_results = pd.DataFrame(results,columns=['base_name','noise','snr','accuracy'])
     model_results.sort_values(by='accuracy', ascending=False, inplace=True)
     model_results.to_csv(r'models_results/' + f'{model_name}.csv', index=False)
+
+def calculate_y_ratio_per_file():
+    basic_files = [file_name for file_name in Path(os.getcwd()+os.path.sep+'Parquet_DB'+os.path.sep+'Quiet').rglob("*.gzip")]
+    file_names,voice_ratio =[],[]
+    for file in basic_files:
+        file_names.append(get_original_name(file))
+        _,y = df_path_to_X_y(file)
+        voice_ratio.append(torch.mean(y.type(torch.FloatTensor)).item())
+
+    voice_ratio_per_file = pd.DataFrame({'file':file_names,'voice_ratio':voice_ratio})
+    voice_ratio_per_file.to_csv('voice_ratio_per_file.csv',index=False)
+
+
+if __name__ =='__main__':
+    pass
